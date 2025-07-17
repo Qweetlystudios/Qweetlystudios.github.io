@@ -1,10 +1,50 @@
-<DOCTYPE html>
+<!DOCTYPE html>
+<html lang="en">
   <head>
-    <html>
-      <title>Chicken Road Crossing</title>
-      <h1>Sorry for the inconvenience...</h1>
-      <h3>Sorry, but this game is not out yet.</h3>
-      <h4>Will be available in.</h4>
-      <li>Web</li>
-    </html>
+    <title>Crossy Road Game</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="script.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/99/three.min.js"></script>
   </head>
+  <body>
+    <div id="counter">0</div>
+    <div id="controlls">
+      <div>
+        <button id="forward">
+          <svg width="30" height="30" viewBox="0 0 10 10">
+            <g transform="rotate(0, 5,5)">
+              <path d="M5,4 L7,6 L3,6 L5,4" />
+            </g>
+          </svg>
+        </button>
+        <button id="left">
+          <svg width="30" height="30" viewBox="0 0 10 10">
+            <g transform="rotate(-90, 5,5)">
+              <path d="M5,4 L7,6 L3,6 L5,4" />
+            </g>
+          </svg>
+        </button>
+        <button id="backward">
+          <svg width="30" height="30" viewBox="0 0 10 10">
+            <g transform="rotate(180, 5,5)">
+              <path d="M5,4 L7,6 L3,6 L5,4" />
+            </g>
+          </svg>
+        </button>
+        <button id="right">
+          <svg width="30" height="30" viewBox="0 0 10 10">
+            <g transform="rotate(90, 5,5)">
+              <path d="M5,4 L7,6 L3,6 L5,4" />
+            </g>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <div id="end">
+      <button id="retry">Retry</button>
+    </div>
+  </body>
+</html>
