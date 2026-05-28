@@ -64,18 +64,20 @@ This letter is a formal notification of copyright infringement pursuant to Secti
 
 **1. Identification of the Copyrighted Work**
 The original content that belongs to me and has been copied without authorization is:
-* **Description of Work:** Content, text, layout assets, or code from my original website.
-* **Original URL:** https://github.io
+* **Description of Work:** <span id="lblDescription" class="highlight-box">[Description Missing]</span>
+* **Original URL:** <span id="lblOriginalUrl" class="highlight-box">[Original URL Missing]</span>
 
 **2. Identification of the Infringing Material**
 The unauthorized HTML pages and assets are actively being served at the following URLs on your network:
 * **Infringing URL(s):** <span id="lblInfringe" class="highlight-box">[Infringing URL Missing]</span>
+* **What is Wrong:** <span id="lblWrong" class="highlight-box">[Details Missing]</span>
+* **What to Remove:** <span id="lblRemove" class="highlight-box">[Details Missing]</span>
 * **Specific Highlighted Elements/IDs:** <span id="lblHighlight" class="highlight-box">[None Specified]</span>
 
 **3. Contact Information**
 Please use the following details to contact me regarding this matter:
 * **Full Legal Name:** Oskars Zihmanis
-* **Email Address:** qweetlystudios.github.io
+* **Email Address:** <span id="lblEmail" class="highlight-box">qweetlystudios@gmail.com</span>
 
 **4. Required Legal Statements**
 * I hereby state that I have a good faith belief that the use of the copyrighted material in the manner complained of is not authorized by the copyright owner, its agent, or the law.
@@ -93,16 +95,12 @@ Oskars Zihmanis</div>
     <script>
         // Custom parser to split your slash-based variables safely
         function getCustomParam(paramName) {
-            // Get everything after the first "?"
             const fullQuery = window.location.search + window.location.hash; 
-            
-            // Split parameters by "/?" or "?" or "/"
             const parts = fullQuery.split(/[\/?&]+/);
             
             for (let part of parts) {
                 if (part.includes('=')) {
                     const [key, val] = part.split('=');
-                    // Case insensitive check to match 'infringe' vs 'Infridge'
                     if (key.toLowerCase() === paramName.toLowerCase()) {
                         return decodeURIComponent(val);
                     }
@@ -111,23 +109,26 @@ Oskars Zihmanis</div>
             return null;
         }
 
-        // Extract values using custom parser
-        const urlDate = getCustomParam('date');
-        const urlInfringe = getCustomParam('infringe');
-        const urlHighlight = getCustomParam('highlight');
+        // Mapping URL parameter strings to their respective HTML IDs
+        const paramsMap = {
+            'date': 'lblDate',
+            'infringe': 'lblInfringe',
+            'highlight': 'lblHighlight',
+            'email': 'lblEmail',
+            'originalurl': 'lblOriginalUrl',
+            'description': 'lblDescription',
+            'wrong': 'lblWrong',
+            'remove': 'lblRemove'
+        };
 
-        // Update elements dynamically
-        if (urlDate) {
-            document.getElementById('lblDate').textContent = urlDate;
-            document.getElementById('lblDate').classList.remove('highlight-box');
-        }
-        if (urlInfringe) {
-            document.getElementById('lblInfringe').textContent = urlInfringe;
-            document.getElementById('lblInfringe').classList.remove('highlight-box');
-        }
-        if (urlHighlight) {
-            document.getElementById('lblHighlight').textContent = urlHighlight;
-            document.getElementById('lblHighlight').classList.remove('highlight-box');
+        // Dynamically update text across the document
+        for (const [param, elementId] of Object.entries(paramsMap)) {
+            const value = getCustomParam(param);
+            if (value) {
+                const element = document.getElementById(elementId);
+                element.textContent = value;
+                element.classList.remove('highlight-box');
+            }
         }
 
         // Instant clipboard copy function
