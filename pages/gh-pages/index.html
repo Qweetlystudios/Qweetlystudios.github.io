@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Redirecting...</title>
+    <link rel="icon" type="image/x-icon" href="https://github.io" />
+</head>
+<body style="text-align: left;">
+
+    <div id="mainView" style="text-align: left;">
+        <p>Connecting to qweetlystudios.github.io...</p>
+    </div>
+
+    <script>
+        // Function to extract custom slash-separated URL variables if needed
+        function getCustomParam(paramName) {
+            const fullQuery = window.location.search + window.location.hash; 
+            const parts = fullQuery.split(/[\/?&]+/);
+            
+            for (let part of parts) {
+                if (part.includes('=')) {
+                    const [key, val] = part.split('=');
+                    if (key.toLowerCase() === paramName.toLowerCase()) {
+                        return decodeURIComponent(val);
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Check for manual testing flag override
+        const overlapFlag = getCustomParam('redirectionoverlap');
+        
+        // Precise mathematical 2.1% chance factor roll
+        const rollDice = Math.random() < 0.21; 
+
+        // Execute routing switch based on the random roll outcome
+        if (overlapFlag === 'true' || rollDice) {
+            document.getElementById('mainView').style.display = 'none';
+            window.location.href = "https://qweetlystudios.github.io/pages/redirectionoverlap/";
+        } else {
+            window.location.href = "https://github.io";
+        }
+        // If selected target https://github.io contact qweetlystudios
+    </script>
+
+</body>
+</html>
