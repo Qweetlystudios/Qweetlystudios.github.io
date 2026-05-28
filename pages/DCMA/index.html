@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic DMCA Notice Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        .letter-box {
+            background: #ffffff;
+            padding: 30px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            white-space: pre-wrap; /* Preserves formatting and line breaks */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .highlight-box {
+            background-color: #fffde7;
+            font-weight: bold;
+            color: #d32f2f;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        .btn-copy {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .btn-copy:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Your Dynamic DMCA Notice</h2>
+    <p>Values are automatically pulled from your custom query string parameters.</p>
+    
+    <button class="btn-copy" onclick="copyText()">Copy Notice Text</button>
+
+    <div class="letter-box" id="dmcaLetter">**Subject:** DMCA Copyright Infringement Notification
+
+**Date:** <span id="lblDate" class="highlight-box">[Date Missing]</span>
+
+**To:** DMCA Designated Legal Agent  
+**Hosting Provider Name:** [Insert Name of the Web Host]  
+**Abuse/Legal Email:** [Insert Host Legal Email]
+
+Dear DMCA Designated Agent,
+
+This letter is a formal notification of copyright infringement pursuant to Section 512(c) of the Digital Millennium Copyright Act (DMCA), 17 U.S.C. § 512. I am writing to request that your company immediately disable access to or remove the infringing HTML site/files currently hosted on your network.
+
+**1. Identification of the Copyrighted Work**
+The original content that belongs to me and has been copied without authorization is:
+* **Description of Work:** Content, text, layout assets, or code from my original website.
+* **Original URL:** https://github.io
+
+**2. Identification of the Infringing Material**
+The unauthorized HTML pages and assets are actively being served at the following URLs on your network:
+* **Infringing URL(s):** <span id="lblInfringe" class="highlight-box">[Infringing URL Missing]</span>
+* **Specific Highlighted Elements/IDs:** <span id="lblHighlight" class="highlight-box">[None Specified]</span>
+
+**3. Contact Information**
+Please use the following details to contact me regarding this matter:
+* **Full Legal Name:** Oskars Zihmanis
+* **Email Address:** qweetlystudios.github.io
+
+**4. Required Legal Statements**
+* I hereby state that I have a good faith belief that the use of the copyrighted material in the manner complained of is not authorized by the copyright owner, its agent, or the law.
+* I hereby state, under penalty of perjury under the laws of the United States of America, that the information contained in this notification is accurate, and that I am the copyright owner or authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.
+
+**5. Request for Action**
+As the hosting provider for the IP address hosting these files, I request that you expeditiously remove or disable public access to the infringing HTML files listed above. 
+
+Thank you for your prompt cooperation.
+
+Sincerely,
+
+Oskars Zihmanis</div>
+
+    <script>
+        // Custom parser to split your slash-based variables safely
+        function getCustomParam(paramName) {
+            // Get everything after the first "?"
+            const fullQuery = window.location.search + window.location.hash; 
+            
+            // Split parameters by "/?" or "?" or "/"
+            const parts = fullQuery.split(/[\/?&]+/);
+            
+            for (let part of parts) {
+                if (part.includes('=')) {
+                    const [key, val] = part.split('=');
+                    // Case insensitive check to match 'infringe' vs 'Infridge'
+                    if (key.toLowerCase() === paramName.toLowerCase()) {
+                        return decodeURIComponent(val);
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Extract values using custom parser
+        const urlDate = getCustomParam('date');
+        const urlInfringe = getCustomParam('infringe');
+        const urlHighlight = getCustomParam('highlight');
+
+        // Update elements dynamically
+        if (urlDate) {
+            document.getElementById('lblDate').textContent = urlDate;
+            document.getElementById('lblDate').classList.remove('highlight-box');
+        }
+        if (urlInfringe) {
+            document.getElementById('lblInfringe').textContent = urlInfringe;
+            document.getElementById('lblInfringe').classList.remove('highlight-box');
+        }
+        if (urlHighlight) {
+            document.getElementById('lblHighlight').textContent = urlHighlight;
+            document.getElementById('lblHighlight').classList.remove('highlight-box');
+        }
+
+        // Instant clipboard copy function
+        function copyText() {
+            const letterText = document.getElementById('dmcaLetter').innerText;
+            navigator.clipboard.writeText(letterText).then(() => {
+                alert('DMCA notice copied to clipboard!');
+            }).catch(err => {
+                alert('Failed to copy text automatically.');
+            });
+        }
+    </script>
+
+</body>
+</html>
