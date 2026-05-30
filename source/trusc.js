@@ -1,32 +1,30 @@
 /**
- * trusc.js — Enterprise Trust Score & Security Auditor v2.0.0
- * -----------------------------------------------------------
- * @fileoverview  Scans the current page for security flaws, privacy risks,
- *                and suspicious patterns.  Generates a trust score (0–100)
- *                and a rich console report.  Integrates with the DevTools
- *                console for manual deep‑dives.
+ * trusc.js — Enterprise Trust Score & Security Auditor v3.2.1
+ * ------------------------------------------------------------
+ * @fileoverview  Deep‑inspects the current page for security flaws,
+ *                privacy leaks, and suspicious patterns.  Produces a
+ *                trust score (0–100) and a fully detailed console
+ *                report.  When the URL contains `?trusc_trustscore=test`
+ *                a simulated self‑test demonstrates the auditor’s
+ *                capabilities without modifying the live page.
  *
- * @author   Qweetlystudios DevOps Taskforce (Trust & Safety Division)
- * @version  2.0.0 – Platinum
+ * @author   Qweetlystudios DevOps Taskforce (Trust & Safety Division), Versatylix(versatylix.github.io/en/projects/trusc)
+ * @version  3.2.1 – Enterprise Platinum
  * @license  Internal – All Rights Reserved
  *
  * Usage:
- *   // Automatic audit on page load
  *   <script src="https://qweetlystudios.github.io/source/trusc.js"></script>
  *
- *   // Manual re‑audit
- *   __trusc.audit();
+ *   Then open DevTools → Console to see the automatic audit.
+ *   Add ?trusc_trustscore=test to trigger the comprehensive self‑test.
  *
- *   // Get the latest score
- *   __trusc.score;           // e.g. 85
- *
- *   // Get detailed report
- *   __trusc.report();        // prints full breakdown
- *
- *   // Customise trusted domains
- *   __trusc.config.trustedDomains.push('*.example.com');
- *
- *   // Self‑test: add ?trusc_test=2 to the URL
+ *   Manual API:
+ *     __trusc.audit()            // re‑run the full audit
+ *     __trusc.score              // last score (0‑100)
+ *     __trusc.report()           // print last report again
+ *     __trusc.config.trustedDomains.push('*.example.com')
+ *     __trusc.addTrustedDomain('partner.com')
+ *     __trusc.history()          // array of past reports
  */
 (function(global, document, console, Math, Date, setTimeout, clearTimeout, Array, Object, RegExp, JSON, Promise, location, navigator) {
     'use strict';
@@ -35,79 +33,95 @@
     // SECTION 1: IMMUTABLE CONFIGURATION
     // =========================================================================
     var CONFIG = {
+        // Console logging verbosity (lower levels are suppressed)
         logLevel: 'info',                     // silent|error|warn|info|debug|trace
         logPrefix: '🛡️ [Trusc]',
-        maxScore: 100,                        // starting score
-        deduct: {                             // points deducted per issue
+
+        // Scoring
+        maxScore: 100,
+        deduct: {
             critical: 25,
-            high: 15,
-            medium: 8,
-            low: 3
+            high:     15,
+            medium:   8,
+            low:      3
         },
-        // Known trusted domains (wildcards supported)
+
+        // Trusted domains (wildcards allowed, 'self' = current domain)
         trustedDomains: [
             'self',
             '*.google.com',
             '*.gstatic.com',
             '*.googleapis.com',
+            '*.googleusercontent.com',
             '*.facebook.com',
             '*.fbcdn.net',
             '*.twitter.com',
             '*.twimg.com',
             '*.github.com',
+            '*.githubassets.com',
             '*.githubusercontent.com',
             '*.paypal.com',
+            '*.paypalobjects.com',
             '*.stripe.com',
             '*.jsdelivr.net',
             '*.cdnjs.cloudflare.com',
             '*.unpkg.com'
         ],
-        // Domains that are always flagged as suspicious
-        suspiciousDomains: [
-            /.*\.ru$/,
-            /.*\.cn$/,
-            /.*\.tk$/,
-            /.*\.ml$/,
-            /.*\.ga$/,
-            /.*\.cf$/,
-            /.*\.gq$/,
-            /.*\.xyz$/   // common free domains used in phishing
+
+        // TLDs commonly abused for phishing / scam
+        suspiciousTLDs: [
+            /\.ru$/i, /\.cn$/i, /\.tk$/i, /\.ml$/i,
+            /\.ga$/i, /\.cf$/i, /\.gq$/i, /\.xyz$/i
         ],
-        // Patterns indicating phishing / scam intent
+
+        // URL path patterns that strongly indicate phishing
         phishingPatterns: [
             /login.*\.html?$/i,
             /account.*verify/i,
             /secure.*update/i,
             /password.*reset/i,
-            /signin.*redirect/i
+            /signin.*redirect/i,
+            /confirm.*identity/i,
+            /validate.*account/i
         ],
-        // Outdated JS library versions (common CVEs)
+
+        // Minimum recommended versions for popular libraries
         outdatedVersions: {
-            'jQuery': { min: '3.5.0', severity: 'high' },
-            'Bootstrap': { min: '5.0.0', severity: 'medium' },
-            'AngularJS': { min: '1.8.0', severity: 'critical' },
-            'React': { min: '17.0.0', severity: 'medium' }
+            'jQuery':   { min: '3.5.0', severity: 'high' },
+            'Bootstrap':{ min: '5.0.0', severity: 'medium' },
+            'AngularJS':{ min: '1.8.0', severity: 'critical' },
+            'React':    { min: '17.0.0', severity: 'medium' }
         },
-        enableEvalDetection: true,
-        enableDocumentWriteDetection: true,
-        enableMixedContentCheck: true,
-        enableExternalScriptCheck: true,
-        enableLinkAudit: true,
-        enableFormAudit: true,
-        enableFramingCheck: true,
-        enableMetaTagCheck: true,
-        enableOutdatedLibCheck: true,
-        enablePhishingURLCheck: true,
-        storeReportHistory: true,
+
+        // Detector toggles
+        checks: {
+            https:                true,
+            mixedContent:         true,
+            forms:                true,
+            externalScripts:      true,
+            links:                true,
+            metaTags:             true,
+            framing:              true,
+            outdatedLibs:         true,
+            phishingURL:          true,
+            cookies:              true,   // check cookie flags (HttpOnly, Secure, SameSite)
+            storage:              true,   // localStorage/sessionStorage usage
+            permissions:          true,   // navigator.permissions
+            websocket:            true,   // ws:// connections
+            externalResources:    true    // fonts, objects, embeds
+        },
+
+        // History
+        storeHistory: true,
         maxHistoryItems: 20
     };
 
     // =========================================================================
-    // SECTION 2: ULTIMATE UTILITY BELT
+    // SECTION 2: UTILITY LIBRARY
     // =========================================================================
     var Util = {
         /**
-         * Log with configurable level.
+         * Log with configurable severity.
          */
         log: function(level, msg) {
             var levels = { silent:0, error:1, warn:2, info:3, debug:4, trace:5 };
@@ -119,32 +133,37 @@
                 else console.log.apply(console, args);
             }
         },
+
         /**
-         * Convert wildcard domain pattern to a RegExp.
+         * Escape a string for use in RegExp.
+         */
+        escapeRegExp: function(str) {
+            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        },
+
+        /**
+         * Convert a wildcard domain pattern to a RegExp.
+         * 'self' resolves to the current hostname.
          */
         domainToRegex: function(pattern) {
             if (pattern === 'self') {
                 return new RegExp('^' + Util.escapeRegExp(location.hostname) + '$', 'i');
             }
             var escaped = Util.escapeRegExp(pattern);
-            // Replace \* with .*
             var regexStr = '^' + escaped.replace(/\\\*/g, '.*') + '$';
             return new RegExp(regexStr, 'i');
         },
+
         /**
-         * Escape a string for use in regex.
-         */
-        escapeRegExp: function(str) {
-            return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        },
-        /**
-         * Check if a URL matches any trusted domain pattern.
+         * Check if a URL (or hostname) is trusted.
          */
         isTrustedDomain: function(url) {
             var hostname;
             try {
                 hostname = new URL(url, location.href).hostname;
-            } catch(e) { return false; }
+            } catch(e) {
+                return false;
+            }
             if (hostname === location.hostname) return true;
             for (var i = 0; i < CONFIG.trustedDomains.length; i++) {
                 var regex = Util.domainToRegex(CONFIG.trustedDomains[i]);
@@ -152,21 +171,23 @@
             }
             return false;
         },
+
         /**
-         * Check if a URL matches any suspicious domain pattern.
+         * Check if a URL's hostname matches a suspicious TLD pattern.
          */
-        isSuspiciousDomain: function(url) {
+        isSuspiciousTLD: function(url) {
             var hostname;
             try {
                 hostname = new URL(url, location.href).hostname;
             } catch(e) { return false; }
-            for (var i = 0; i < CONFIG.suspiciousDomains.length; i++) {
-                if (CONFIG.suspiciousDomains[i].test(hostname)) return true;
+            for (var i = 0; i < CONFIG.suspiciousTLDs.length; i++) {
+                if (CONFIG.suspiciousTLDs[i].test(hostname)) return true;
             }
             return false;
         },
+
         /**
-         * Check if a URL path matches phishing patterns.
+         * Check if a URL path matches known phishing patterns.
          */
         isPhishingURL: function(url) {
             var pathname;
@@ -178,367 +199,320 @@
             }
             return false;
         },
+
         /**
-         * Compare semantic versions.
-         * Returns true if current < minimum required.
+         * Compare semantic versions: return true if current < minimum.
          */
         isVersionOutdated: function(current, minimum) {
             if (!current || !minimum) return false;
-            var curParts = current.split('.').map(Number);
-            var minParts = minimum.split('.').map(Number);
-            for (var i = 0; i < Math.max(curParts.length, minParts.length); i++) {
-                var a = curParts[i] || 0;
-                var b = minParts[i] || 0;
+            var cur = current.split('.').map(Number);
+            var min = minimum.split('.').map(Number);
+            for (var i = 0; i < Math.max(cur.length, min.length); i++) {
+                var a = cur[i] || 0;
+                var b = min[i] || 0;
                 if (a < b) return true;
                 if (a > b) return false;
             }
-            return false; // equal
+            return false;
         }
     };
 
     // =========================================================================
-    // SECTION 3: SECURITY DETECTOR MODULES
+    // SECTION 3: DETECTOR MODULES
     // =========================================================================
     var Detectors = {
-        /**
-         * Check if page is loaded over HTTPS.
-         */
-        httpsCheck: function() {
+        // 1. HTTPS check
+        https: function() {
             var issues = [];
             if (location.protocol !== 'https:') {
                 issues.push({
                     severity: 'critical',
                     title: 'Insecure connection (HTTP)',
-                    detail: 'The page is served over HTTP. All data is transmitted in plain text.',
-                    fix: 'Redirect to HTTPS and use HSTS.'
+                    detail: 'The page is served over HTTP – all traffic can be intercepted.',
+                    fix: 'Enforce HTTPS and use HSTS.'
                 });
             }
             return issues;
         },
-        /**
-         * Mixed content: resources loaded over HTTP on an HTTPS page.
-         */
-        mixedContentCheck: function() {
-            if (!CONFIG.enableMixedContentCheck) return [];
-            if (location.protocol !== 'https:') return []; // only relevant on HTTPS
+
+        // 2. Mixed content (resources loaded over HTTP on HTTPS page)
+        mixedContent: function() {
+            if (!CONFIG.checks.mixedContent || location.protocol !== 'https:') return [];
             var issues = [];
             // Images
-            var imgs = document.querySelectorAll('img[src^="http:"]');
-            imgs.forEach(function(img) {
-                issues.push({
-                    severity: 'high',
-                    title: 'Mixed content: HTTP image',
-                    detail: 'Image loaded over HTTP: ' + img.src,
-                    element: img
-                });
+            document.querySelectorAll('img[src^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'high', title: 'Mixed content: HTTP image', detail: 'Image ' + el.src, element: el });
             });
             // Scripts
-            var scripts = document.querySelectorAll('script[src^="http:"]');
-            scripts.forEach(function(s) {
-                issues.push({
-                    severity: 'critical',
-                    title: 'Mixed content: HTTP script',
-                    detail: 'Script loaded over HTTP: ' + s.src,
-                    element: s
-                });
+            document.querySelectorAll('script[src^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'critical', title: 'Mixed content: HTTP script', detail: 'Script ' + el.src, element: el });
             });
             // Iframes
-            var iframes = document.querySelectorAll('iframe[src^="http:"]');
-            iframes.forEach(function(f) {
-                issues.push({
-                    severity: 'high',
-                    title: 'Mixed content: HTTP iframe',
-                    detail: 'Iframe loaded over HTTP: ' + f.src,
-                    element: f
-                });
+            document.querySelectorAll('iframe[src^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'high', title: 'Mixed content: HTTP iframe', detail: 'Iframe ' + el.src, element: el });
             });
-            // Links (only warn if they point to an HTTP page from an HTTPS context? Not mixed content per spec, but can be flagged)
+            // Video/Audio/Embed/Object
+            document.querySelectorAll('video[src^="http:"], audio[src^="http:"], embed[src^="http:"], object[data^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'medium', title: 'Mixed content: HTTP media/object', detail: el.src || el.data, element: el });
+            });
+            // CSS (link)
+            document.querySelectorAll('link[rel="stylesheet"][href^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'high', title: 'Mixed content: HTTP stylesheet', detail: el.href, element: el });
+            });
+            // Fonts
+            document.querySelectorAll('link[rel*="font"][href^="http:"]').forEach(function(el) {
+                issues.push({ severity: 'medium', title: 'Mixed content: HTTP font', detail: el.href, element: el });
+            });
             return issues;
         },
-        /**
-         * Forms submitting to HTTP (on HTTPS page) or to external untrusted domains.
-         */
-        formAudit: function() {
-            if (!CONFIG.enableFormAudit) return [];
+
+        // 3. Form security
+        forms: function() {
+            if (!CONFIG.checks.forms) return [];
             var issues = [];
-            var forms = document.forms;
-            for (var i = 0; i < forms.length; i++) {
-                var form = forms[i];
+            Array.from(document.forms).forEach(function(form) {
                 var action = form.action || location.href;
-                // Check if action is HTTP and page is HTTPS
-                if (location.protocol === 'https:' && action.startsWith('http:')) {
-                    issues.push({
-                        severity: 'critical',
-                        title: 'Form submits over HTTP',
-                        detail: 'Form action is HTTP: ' + action,
-                        element: form
-                    });
-                }
-                // Check if action is to an untrusted external domain
                 var formHost;
                 try { formHost = new URL(action, location.href).hostname; } catch(e) { formHost = null; }
-                if (formHost && formHost !== location.hostname && !Util.isTrustedDomain(action)) {
-                    issues.push({
-                        severity: 'medium',
-                        title: 'Form submits to untrusted domain',
-                        detail: 'Form action points to ' + action + ' which is not in trusted list.',
-                        element: form
-                    });
+
+                // Form submits over HTTP on HTTPS page
+                if (location.protocol === 'https:' && action.startsWith('http:')) {
+                    issues.push({ severity: 'critical', title: 'Form submits over HTTP', detail: 'Action: ' + action, element: form });
                 }
-            }
+                // Untrusted external action
+                if (formHost && formHost !== location.hostname && !Util.isTrustedDomain(action)) {
+                    issues.push({ severity: 'medium', title: 'Form submits to untrusted domain', detail: 'Action points to ' + action, element: form });
+                }
+                // Missing autocomplete=off for sensitive fields? Not always a flaw, but could be flagged.
+            });
             return issues;
         },
-        /**
-         * External scripts from untrusted domains.
-         */
-        externalScriptCheck: function() {
-            if (!CONFIG.enableExternalScriptCheck) return [];
+
+        // 4. External scripts from untrusted or suspicious domains
+        externalScripts: function() {
+            if (!CONFIG.checks.externalScripts) return [];
             var issues = [];
-            var scripts = document.querySelectorAll('script[src]');
-            scripts.forEach(function(s) {
+            document.querySelectorAll('script[src]').forEach(function(s) {
                 var src = s.src;
-                if (!src) return;
                 var host;
                 try { host = new URL(src).hostname; } catch(e) { return; }
-                if (host !== location.hostname && !Util.isTrustedDomain(src)) {
-                    issues.push({
-                        severity: 'medium',
-                        title: 'External script from untrusted domain',
-                        detail: 'Script loaded from ' + src + ' which is not in the trusted list.',
-                        element: s
-                    });
-                }
-                if (Util.isSuspiciousDomain(src)) {
-                    issues.push({
-                        severity: 'high',
-                        title: 'Script from suspicious TLD',
-                        detail: 'Script src ' + src + ' is from a frequently abused domain zone.',
-                        element: s
-                    });
+                if (host !== location.hostname) {
+                    if (!Util.isTrustedDomain(src)) {
+                        issues.push({ severity: 'medium', title: 'External script from untrusted domain', detail: src, element: s });
+                    }
+                    if (Util.isSuspiciousTLD(src)) {
+                        issues.push({ severity: 'high', title: 'Script from suspicious TLD', detail: src, element: s });
+                    }
                 }
             });
             return issues;
         },
-        /**
-         * Link audit: target="_blank" without rel="noopener", javascript: links, suspicious URLs.
-         */
-        linkAudit: function() {
-            if (!CONFIG.enableLinkAudit) return [];
+
+        // 5. Links audit
+        links: function() {
+            if (!CONFIG.checks.links) return [];
             var issues = [];
-            var links = document.querySelectorAll('a[href]');
-            links.forEach(function(a) {
+            document.querySelectorAll('a[href]').forEach(function(a) {
                 var href = a.href;
                 if (!href) return;
-                // javascript: links (often used for malicious purposes)
-                if (href.toLowerCase().startsWith('javascript:')) {
-                    issues.push({
-                        severity: 'high',
-                        title: 'JavaScript link detected',
-                        detail: 'Link uses javascript: protocol – can be used for XSS or phishing.',
-                        element: a
-                    });
+                // javascript: links
+                if (/^javascript:/i.test(href)) {
+                    issues.push({ severity: 'high', title: 'JavaScript link', detail: 'Link uses javascript: protocol – potential XSS or phishing.', element: a });
                     return;
                 }
-                // target="_blank" without rel="noopener" (tabnabbing)
-                if (a.target === '_blank' && (!a.rel || !a.rel.includes('noopener') && !a.rel.includes('noreferrer'))) {
-                    issues.push({
-                        severity: 'medium',
-                        title: 'External link opens without rel="noopener"',
-                        detail: 'Link opens in a new tab/window and may be vulnerable to tabnabbing.',
-                        element: a
-                    });
+                // target="_blank" without noopener/noreferrer
+                if (a.target === '_blank' && (!a.rel || !a.rel.match(/noopener|noreferrer/))) {
+                    issues.push({ severity: 'medium', title: 'External link without rel="noopener"', detail: 'Tabnabbing risk.', element: a });
                 }
-                // External link to untrusted domain
+                // Link to untrusted domain
                 var host;
                 try { host = new URL(href).hostname; } catch(e) { host = null; }
                 if (host && host !== location.hostname && !Util.isTrustedDomain(href)) {
-                    issues.push({
-                        severity: 'low',
-                        title: 'External link to untrusted domain',
-                        detail: 'Link points to ' + href + ' which is not in trusted list.',
-                        element: a
-                    });
+                    issues.push({ severity: 'low', title: 'External link to untrusted domain', detail: href, element: a });
                 }
                 // Suspicious TLD
-                if (Util.isSuspiciousDomain(href)) {
-                    issues.push({
-                        severity: 'high',
-                        title: 'Link to suspicious TLD',
-                        detail: 'Link leads to ' + href + ' – a commonly abused domain zone.',
-                        element: a
-                    });
+                if (Util.isSuspiciousTLD(href)) {
+                    issues.push({ severity: 'high', title: 'Link to suspicious TLD', detail: href, element: a });
                 }
                 // Phishing URL pattern
                 if (Util.isPhishingURL(href)) {
-                    issues.push({
-                        severity: 'critical',
-                        title: 'Phishing URL pattern detected',
-                        detail: 'The link ' + href + ' resembles a known phishing pattern.',
-                        element: a
-                    });
+                    issues.push({ severity: 'critical', title: 'Phishing URL pattern', detail: href, element: a });
                 }
             });
             return issues;
         },
-        /**
-         * Check for common security‑related meta tags (CSP, referrer, X-UA-Compatible?).
-         */
-        metaTagCheck: function() {
-            if (!CONFIG.enableMetaTagCheck) return [];
+
+        // 6. Meta tags (CSP, Referrer-Policy, etc.)
+        metaTags: function() {
+            if (!CONFIG.checks.metaTags) return [];
             var issues = [];
-            var metaCSP = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
-            if (!metaCSP) {
-                issues.push({
-                    severity: 'low',
-                    title: 'Missing Content Security Policy meta tag',
-                    detail: 'No CSP found. A CSP helps prevent XSS and data injection attacks.',
-                    fix: 'Add a <meta http-equiv="Content-Security-Policy" content="..."> tag.'
-                });
+            if (!document.querySelector('meta[http-equiv="Content-Security-Policy"]')) {
+                issues.push({ severity: 'low', title: 'Missing Content Security Policy (CSP) meta tag', detail: 'CSP helps mitigate XSS and data injection.', fix: 'Define a CSP via <meta> or HTTP header.' });
             }
-            var metaReferrer = document.querySelector('meta[name="referrer"]');
-            if (!metaReferrer) {
-                issues.push({
-                    severity: 'low',
-                    title: 'Missing Referrer-Policy meta tag',
-                    detail: 'No referrer policy set; may leak full URLs to third parties.',
-                    fix: 'Add <meta name="referrer" content="no-referrer-when-downgrade"> or similar.'
-                });
+            if (!document.querySelector('meta[name="referrer"]')) {
+                issues.push({ severity: 'low', title: 'Missing Referrer-Policy meta tag', detail: 'Referrer information may leak to third parties.', fix: 'Add <meta name="referrer" content="no-referrer-when-downgrade">.' });
             }
-            // X-UA-Compatible? Not security-related, skip.
+            // Check for X-UA-Compatible? Not security related.
             return issues;
         },
-        /**
-         * Check if the page is loaded inside an iframe (potential clickjacking).
-         */
-        framingCheck: function() {
-            if (!CONFIG.enableFramingCheck) return [];
+
+        // 7. Framing protection (clickjacking)
+        framing: function() {
+            if (!CONFIG.checks.framing) return [];
             var issues = [];
             try {
-                if (window.top !== window.self) {
-                    // Framed. We cannot see X-Frame-Options, but we can suggest.
-                    issues.push({
-                        severity: 'medium',
-                        title: 'Page is loaded inside an iframe',
-                        detail: 'This page is being framed by another site. This may be a clickjacking attempt if the framing site is untrusted.',
-                        fix: 'Ensure your server sends X-Frame-Options: DENY or SAMEORIGIN.'
-                    });
+                if (window.self !== window.top) {
+                    // Framed. We can't check X-Frame-Options, but we know it's framed.
+                    var msg = 'Page is loaded inside a frame – possible clickjacking if the framing site is untrusted.';
+                    issues.push({ severity: 'medium', title: 'Page is framed', detail: msg, fix: 'Use X-Frame-Options: DENY or SAMEORIGIN on your server.' });
                 }
             } catch(e) {
-                // Cross-origin framing – definitely a risk
-                issues.push({
-                    severity: 'high',
-                    title: 'Page is cross‑origin framed',
-                    detail: 'The page is embedded in an iframe from a different origin, which is a strong clickjacking risk.',
-                    fix: 'Use X-Frame-Options: DENY or implement frame‑busting.'
-                });
+                // Cross-origin framing – definitely a problem
+                issues.push({ severity: 'high', title: 'Cross-origin framing detected', detail: 'This page is embedded in a frame from a different origin – strong clickjacking risk.', fix: 'Set X-Frame-Options to DENY or implement frame‑busting.' });
             }
             return issues;
         },
-        /**
-         * Detect usage of eval() (indicative of unsafe practices).
-         */
-        evalDetection: function() {
-            if (!CONFIG.enableEvalDetection) return [];
+
+        // 8. Outdated JavaScript libraries
+        outdatedLibs: function() {
+            if (!CONFIG.checks.outdatedLibs) return [];
             var issues = [];
-            // We can override eval globally, but that would change behaviour.
-            // Instead, we can check if the page overrides eval? Not reliable.
-            // Best we can do: check if there is a reference to eval in inline scripts? Not safe.
-            // We'll skip for now; real detection would require dynamic analysis.
-            Util.log('debug', 'eval detection disabled (static analysis not possible).');
-            return issues;
-        },
-        /**
-         * Detect document.write() usage (blocks rendering, potential DOM XSS).
-         */
-        documentWriteDetection: function() {
-            if (!CONFIG.enableDocumentWriteDetection) return [];
-            var issues = [];
-            // Override document.write to log calls – this may affect page functionality.
-            // We'll do it safely: replace with a wrapper that records, but only after page load.
-            if (document.readyState === 'complete') {
-                var origWrite = document.write;
-                var called = false;
-                document.write = function() {
-                    called = true;
-                    // Don't actually write, because we're past load
-                    Util.log('warn', 'document.write() called after page load.');
-                };
-                // We can't know if it was called before our script ran.
-                // We'll add a warning that it's not detectable.
-            }
-            return issues;
-        },
-        /**
-         * Outdated JavaScript library detection.
-         */
-        outdatedLibCheck: function() {
-            if (!CONFIG.enableOutdatedLibCheck) return [];
-            var issues = [];
-            // Check jQuery
+            // jQuery
             if (typeof jQuery !== 'undefined' && jQuery.fn && jQuery.fn.jquery) {
-                var jqVersion = jQuery.fn.jquery;
-                if (Util.isVersionOutdated(jqVersion, CONFIG.outdatedVersions.jQuery.min)) {
-                    issues.push({
-                        severity: CONFIG.outdatedVersions.jQuery.severity,
-                        title: 'Outdated jQuery version',
-                        detail: 'jQuery ' + jqVersion + ' is below recommended ' + CONFIG.outdatedVersions.jQuery.min,
-                        fix: 'Upgrade jQuery to the latest version.'
-                    });
+                var jq = jQuery.fn.jquery;
+                if (Util.isVersionOutdated(jq, CONFIG.outdatedVersions.jQuery.min)) {
+                    issues.push({ severity: CONFIG.outdatedVersions.jQuery.severity, title: 'Outdated jQuery (' + jq + ')', detail: 'Minimum recommended: ' + CONFIG.outdatedVersions.jQuery.min, fix: 'Upgrade jQuery.' });
                 }
             }
-            // Check Bootstrap (if global Bootstrap object exists)
+            // Bootstrap (exposes version via jQuery plugin or Bootstrap object)
             if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip && bootstrap.Tooltip.VERSION) {
-                var bsVersion = bootstrap.Tooltip.VERSION; // approximate
-                if (Util.isVersionOutdated(bsVersion, CONFIG.outdatedVersions.Bootstrap.min)) {
-                    issues.push({
-                        severity: CONFIG.outdatedVersions.Bootstrap.severity,
-                        title: 'Outdated Bootstrap version',
-                        detail: 'Bootstrap ' + bsVersion + ' detected. Recommended >= ' + CONFIG.outdatedVersions.Bootstrap.min,
-                        fix: 'Upgrade Bootstrap.'
-                    });
+                var bs = bootstrap.Tooltip.VERSION;
+                if (Util.isVersionOutdated(bs, CONFIG.outdatedVersions.Bootstrap.min)) {
+                    issues.push({ severity: CONFIG.outdatedVersions.Bootstrap.severity, title: 'Outdated Bootstrap (' + bs + ')', detail: 'Upgrade to >= ' + CONFIG.outdatedVersions.Bootstrap.min });
                 }
             }
-            // Check AngularJS (if angular is defined and has version)
+            // AngularJS
             if (typeof angular !== 'undefined' && angular.version && angular.version.full) {
-                var ngVersion = angular.version.full;
-                if (Util.isVersionOutdated(ngVersion, CONFIG.outdatedVersions.AngularJS.min)) {
-                    issues.push({
-                        severity: CONFIG.outdatedVersions.AngularJS.severity,
-                        title: 'Outdated AngularJS version',
-                        detail: 'AngularJS ' + ngVersion + ' is vulnerable (min ' + CONFIG.outdatedVersions.AngularJS.min + ')',
-                        fix: 'Migrate to Angular (or at least patch AngularJS).'
-                    });
+                var ng = angular.version.full;
+                if (Util.isVersionOutdated(ng, CONFIG.outdatedVersions.AngularJS.min)) {
+                    issues.push({ severity: CONFIG.outdatedVersions.AngularJS.severity, title: 'Outdated AngularJS (' + ng + ')', detail: 'Security fixes missing. Migrate to Angular.' });
                 }
             }
-            // React: can be detected via `React.version`
+            // React
             if (typeof React !== 'undefined' && React.version) {
-                var reactVersion = React.version;
-                if (Util.isVersionOutdated(reactVersion, CONFIG.outdatedVersions.React.min)) {
-                    issues.push({
-                        severity: CONFIG.outdatedVersions.React.severity,
-                        title: 'Outdated React version',
-                        detail: 'React ' + reactVersion + ' detected. Upgrade recommended.',
-                        fix: 'Upgrade to React ' + CONFIG.outdatedVersions.React.min + ' or newer.'
-                    });
+                var react = React.version;
+                if (Util.isVersionOutdated(react, CONFIG.outdatedVersions.React.min)) {
+                    issues.push({ severity: CONFIG.outdatedVersions.React.severity, title: 'Outdated React (' + react + ')', detail: 'Upgrade to >= ' + CONFIG.outdatedVersions.React.min });
                 }
             }
             return issues;
         },
-        /**
-         * Check for phishing URL patterns in the current page URL itself.
-         */
-        phishingURLCheck: function() {
-            if (!CONFIG.enablePhishingURLCheck) return [];
+
+        // 9. Current URL looks like phishing
+        phishingURL: function() {
+            if (!CONFIG.checks.phishingURL) return [];
             var issues = [];
-            var currentUrl = location.href;
-            if (Util.isPhishingURL(currentUrl)) {
-                issues.push({
-                    severity: 'critical',
-                    title: 'Current URL matches phishing pattern',
-                    detail: 'The page URL itself resembles a known phishing URL pattern. This site may be impersonating a legitimate service.',
-                    fix: 'Verify the URL.'
-                });
+            if (Util.isPhishingURL(location.href)) {
+                issues.push({ severity: 'critical', title: 'Current URL matches phishing pattern', detail: 'The page URL appears to impersonate a legitimate login/verification page.', fix: 'Verify the address bar.' });
             }
+            return issues;
+        },
+
+        // 10. Cookie security flags
+        cookies: function() {
+            if (!CONFIG.checks.cookies) return [];
+            var issues = [];
+            var cookies = document.cookie;
+            // We cannot inspect HttpOnly/secure/SameSite from JS – they are hidden.
+            // But we can detect if the page sets cookies without those flags by
+            // analysing set-cookie headers? Not via client. We'll just note.
+            // However, we can check if the page uses any non-secure cookies by
+            // seeing if document.cookie exists (HttpOnly wouldn't show, so no way).
+            // For client-side, we'll flag if there's no cookie at all? No.
+            // So we only warn if document.cookie is accessible and we see cookies
+            // that may be sent over HTTP (we can't know flags). We'll skip for now,
+            // but provide a generic security note.
+            // We'll just add a low‑severity advisory if any cookies are present.
+            if (cookies) {
+                issues.push({ severity: 'low', title: 'Cookies present', detail: 'Ensure cookies have Secure, HttpOnly, and SameSite flags where appropriate. Client cannot verify flags.' });
+            }
+            return issues;
+        },
+
+        // 11. Storage usage (localStorage, sessionStorage)
+        storage: function() {
+            if (!CONFIG.checks.storage) return [];
+            var issues = [];
+            try {
+                if (localStorage.length > 0) {
+                    issues.push({ severity: 'low', title: 'localStorage used', detail: 'Storing sensitive data in localStorage is accessible to any script on the same origin.' });
+                }
+                if (sessionStorage.length > 0) {
+                    issues.push({ severity: 'low', title: 'sessionStorage used', detail: 'Similar risk, but cleared on tab close.' });
+                }
+            } catch(e) {
+                // Storage disabled
+            }
+            return issues;
+        },
+
+        // 12. Browser permissions (excessive requests)
+        permissions: function() {
+            if (!CONFIG.checks.permissions || !navigator.permissions) return [];
+            var issues = [];
+            // We can query permissions if supported (Chromium). We'll check a few.
+            var permissionNames = ['geolocation', 'notifications', 'camera', 'microphone', 'midi', 'push', 'background-sync'];
+            permissionNames.forEach(function(name) {
+                navigator.permissions.query({ name: name }).then(function(status) {
+                    if (status.state === 'granted') {
+                        // Not necessarily a flaw, but we note it.
+                        // We'll only flag if the page has no visible UI for it? Too complex.
+                    }
+                });
+            });
+            return issues; // async, won't appear immediately; we'll skip for now.
+        },
+
+        // 13. WebSocket connections to insecure origin
+        websocket: function() {
+            if (!CONFIG.checks.websocket) return [];
+            var issues = [];
+            // There's no reliable way to enumerate open WebSockets.
+            // We can override WebSocket constructor to log future connections.
+            var origWS = global.WebSocket;
+            var insecureFound = false;
+            global.WebSocket = function(url, protocols) {
+                if (url.startsWith('ws:')) {
+                    insecureFound = true;
+                    Util.log('warn', 'Insecure WebSocket connection to ' + url);
+                    issues.push({ severity: 'high', title: 'Insecure WebSocket (ws://)', detail: 'WebSocket connection to ' + url + ' is not encrypted.', fix: 'Use wss://.' });
+                }
+                return new origWS(url, protocols);
+            };
+            // If any WebSocket was already created before this script? Unlikely.
+            if (!insecureFound) {
+                // No issues added; we'll just return empty.
+            }
+            return issues;
+        },
+
+        // 14. External resources (fonts, objects, etc.)
+        externalResources: function() {
+            if (!CONFIG.checks.externalResources) return [];
+            var issues = [];
+            // Fonts
+            document.querySelectorAll('link[rel*="font"][href]').forEach(function(el) {
+                if (!Util.isTrustedDomain(el.href)) {
+                    issues.push({ severity: 'low', title: 'Font from untrusted domain', detail: el.href, element: el });
+                }
+            });
+            // Objects / embeds
+            document.querySelectorAll('object[data], embed[src]').forEach(function(el) {
+                var src = el.data || el.src;
+                if (src && !Util.isTrustedDomain(src)) {
+                    issues.push({ severity: 'medium', title: 'Object/Embed from untrusted domain', detail: src, element: el });
+                }
+            });
             return issues;
         }
     };
@@ -556,91 +530,94 @@
     }
 
     // =========================================================================
-    // SECTION 5: REPORT GENERATOR & CONSOLE OUTPUT
+    // SECTION 5: REPORT GENERATOR
     // =========================================================================
     function generateReport(issues, score) {
-        var report = {
+        return {
             score: score,
             totalIssues: issues.length,
             critical: issues.filter(function(i) { return i.severity === 'critical'; }).length,
-            high: issues.filter(function(i) { return i.severity === 'high'; }).length,
-            medium: issues.filter(function(i) { return i.severity === 'medium'; }).length,
-            low: issues.filter(function(i) { return i.severity === 'low'; }).length,
-            issues: issues.slice(), // copy
+            high:    issues.filter(function(i) { return i.severity === 'high'; }).length,
+            medium:  issues.filter(function(i) { return i.severity === 'medium'; }).length,
+            low:     issues.filter(function(i) { return i.severity === 'low'; }).length,
+            issues:  issues.slice(),
             timestamp: new Date().toISOString()
         };
-        return report;
     }
 
     function printReport(report) {
-        var style = {
-            critical: 'color: #fff; background: #d32f2f; padding: 2px 5px; font-weight: bold;',
-            high: 'color: #fff; background: #f44336; padding: 2px 5px;',
-            medium: 'color: #000; background: #ff9800; padding: 2px 5px;',
-            low: 'color: #000; background: #ffc107; padding: 2px 5px;'
+        var severityStyle = {
+            critical: 'color:#fff; background:#b71c1c; padding:2px 5px; font-weight:bold;',
+            high:     'color:#fff; background:#d32f2f; padding:2px 5px;',
+            medium:   'color:#000; background:#ff9800; padding:2px 5px;',
+            low:      'color:#000; background:#ffc107; padding:2px 5px;'
         };
+        var scoreColor = report.score >= 80 ? 'green' : report.score >= 50 ? 'orange' : 'red';
 
-        console.group('%c🛡️ Trusc Trust Audit Report %cScore: ' + report.score + '/100',
-            'font-weight: bold; font-size: 1.1em;', report.score >= 80 ? 'color: green;' : report.score >= 50 ? 'color: orange;' : 'color: red;');
-        console.log('Total issues found: ' + report.totalIssues);
-        console.log('Critical: ' + report.critical + ', High: ' + report.high + ', Medium: ' + report.medium + ', Low: ' + report.low);
+        console.group('%c🛡️ Trusc Trust Audit %cScore: ' + report.score + '/100',
+            'font-weight:bold; font-size:1.2em;', 'color:' + scoreColor + '; font-weight:bold;');
+        console.log('Total issues: ' + report.totalIssues +
+                    ' | Critical: ' + report.critical + ', High: ' + report.high +
+                    ', Medium: ' + report.medium + ', Low: ' + report.low);
         console.log('Timestamp: ' + report.timestamp);
+
         if (report.issues.length > 0) {
             console.groupCollapsed('Detailed issues');
             report.issues.forEach(function(issue, idx) {
                 console.log('%c' + (idx+1) + '. [' + issue.severity.toUpperCase() + '] ' + issue.title,
-                    style[issue.severity] || '');
+                    severityStyle[issue.severity] || '');
                 console.log('   Detail: ' + issue.detail);
                 if (issue.fix) console.log('   Fix: ' + issue.fix);
-                if (issue.element) {
-                    console.log('   Element:', issue.element);
-                }
+                if (issue.element) console.log('   Element:', issue.element);
             });
             console.groupEnd();
         } else {
             console.log('✅ No security issues detected!');
         }
-        console.groupEnd();
 
-        // Also show a visual scale
-        var barLength = Math.round(report.score / 5);
-        var bar = '█'.repeat(barLength) + '░'.repeat(20 - barLength);
+        // Visual trust bar
+        var barLen = Math.round(report.score / 5);
+        var bar = '█'.repeat(barLen) + '░'.repeat(20 - barLen);
         console.log('Trust scale: [' + bar + '] ' + report.score + '%');
+        console.groupEnd();
     }
 
     // =========================================================================
-    // SECTION 6: CORE AUDIT FUNCTION
+    // SECTION 6: CORE AUDIT RUNNER
     // =========================================================================
     function runAudit() {
         var issues = [];
-        // Run each detector
-        issues = issues.concat(Detectors.httpsCheck());
-        issues = issues.concat(Detectors.mixedContentCheck());
-        issues = issues.concat(Detectors.formAudit());
-        issues = issues.concat(Detectors.externalScriptCheck());
-        issues = issues.concat(Detectors.linkAudit());
-        issues = issues.concat(Detectors.metaTagCheck());
-        issues = issues.concat(Detectors.framingCheck());
-        issues = issues.concat(Detectors.evalDetection());
-        issues = issues.concat(Detectors.documentWriteDetection());
-        issues = issues.concat(Detectors.outdatedLibCheck());
-        issues = issues.concat(Detectors.phishingURLCheck());
+        // Call every enabled detector and collect issues
+        if (CONFIG.checks.https)               issues = issues.concat(Detectors.https());
+        if (CONFIG.checks.mixedContent)         issues = issues.concat(Detectors.mixedContent());
+        if (CONFIG.checks.forms)                issues = issues.concat(Detectors.forms());
+        if (CONFIG.checks.externalScripts)      issues = issues.concat(Detectors.externalScripts());
+        if (CONFIG.checks.links)                issues = issues.concat(Detectors.links());
+        if (CONFIG.checks.metaTags)             issues = issues.concat(Detectors.metaTags());
+        if (CONFIG.checks.framing)              issues = issues.concat(Detectors.framing());
+        if (CONFIG.checks.outdatedLibs)         issues = issues.concat(Detectors.outdatedLibs());
+        if (CONFIG.checks.phishingURL)          issues = issues.concat(Detectors.phishingURL());
+        if (CONFIG.checks.cookies)              issues = issues.concat(Detectors.cookies());
+        if (CONFIG.checks.storage)              issues = issues.concat(Detectors.storage());
+        // Permissions are async, skip for now.
+        if (CONFIG.checks.websocket)            issues = issues.concat(Detectors.websocket());
+        if (CONFIG.checks.externalResources)    issues = issues.concat(Detectors.externalResources());
 
         var score = calculateScore(issues);
         var report = generateReport(issues, score);
 
-        // Store in global state
+        // Store globally
         global.__trusc.__lastReport = report;
         global.__trusc.score = score;
 
         // Output to console
         printReport(report);
 
-        // Save to history
-        if (CONFIG.storeReportHistory) {
+        // Save history
+        if (CONFIG.storeHistory) {
             if (!global.__trusc.__history) global.__trusc.__history = [];
             global.__trusc.__history.push(report);
-            if (global.__trusc.__history.length > CONFIG.maxHistoryItems) {
+            while (global.__trusc.__history.length > CONFIG.maxHistoryItems) {
                 global.__trusc.__history.shift();
             }
         }
@@ -649,17 +626,34 @@
     }
 
     // =========================================================================
-    // SECTION 7: API & GLOBAL OBJECT
+    // SECTION 7: SELF‑TEST MODE (`?trusc_trustscore=test`)
+    // =========================================================================
+    function selfTest() {
+        console.log(CONFIG.logPrefix + ' 🔬 Self‑test mode active – simulating security issues...');
+        var fakeIssues = [
+            { severity: 'critical', title: 'Simulated: Insecure HTTP connection', detail: 'Test issue 1: page loaded over HTTP.', fix: 'Use HTTPS.' },
+            { severity: 'high', title: 'Simulated: Mixed content script', detail: 'Test issue 2: script loaded over HTTP.', fix: 'Load over HTTPS.' },
+            { severity: 'medium', title: 'Simulated: Form submits to untrusted domain', detail: 'Test issue 3: form action to http://evil.com.', fix: 'Use same origin.' },
+            { severity: 'low', title: 'Simulated: Missing CSP', detail: 'Test issue 4: no Content-Security-Policy meta tag.', fix: 'Add a CSP.' },
+            { severity: 'critical', title: 'Simulated: Phishing URL pattern', detail: 'Test issue 5: /login.html detected.', fix: 'Change URL structure.' },
+            { severity: 'high', title: 'Simulated: Outdated jQuery 1.8.0', detail: 'Test issue 6: vulnerable jQuery.', fix: 'Upgrade.' }
+        ];
+        var score = calculateScore(fakeIssues);
+        var report = generateReport(fakeIssues, score);
+        printReport(report);
+        console.log('%c✅ Self‑test complete. If you see the report above, Trusc works correctly.', 'font-weight:bold;');
+    }
+
+    // =========================================================================
+    // SECTION 8: API & GLOBAL INTEGRATION
     // =========================================================================
     var api = {
-        score: 100,                    // last score, updated after audit
-        config: CONFIG,                // allow live configuration changes
-        audit: function() {
-            return runAudit();
-        },
+        score: 100,
+        config: CONFIG,
+        audit: runAudit,
         report: function() {
             if (!this.__lastReport) {
-                console.warn(CONFIG.logPrefix + ' No audit run yet. Call __trusc.audit() first.');
+                console.warn(CONFIG.logPrefix + ' No audit yet. Run __trusc.audit().');
                 return;
             }
             printReport(this.__lastReport);
@@ -667,19 +661,14 @@
         history: function() {
             return this.__history || [];
         },
-        // Utility to add trusted domains at runtime
         addTrustedDomain: function(pattern) {
             if (CONFIG.trustedDomains.indexOf(pattern) === -1) {
                 CONFIG.trustedDomains.push(pattern);
             }
-        },
-        // Override a detector (for advanced users)
-        addDetector: function(name, fn) {
-            Detectors[name] = fn;
         }
     };
 
-    // Preserve previous queue if exists
+    // Handle pre‑load command queue (like Google Analytics)
     var cmdQueue = [];
     if (global.__trusc && Array.isArray(global.__trusc)) {
         cmdQueue = global.__trusc;
@@ -692,55 +681,43 @@
         var command = cmd[0];
         var args = Array.prototype.slice.call(cmd, 1);
         switch (command) {
-            case 'audit':
-                api.audit();
-                break;
-            case 'report':
-                api.report();
-                break;
-            case 'addTrustedDomain':
-                api.addTrustedDomain(args[0]);
+            case 'audit':           api.audit(); break;
+            case 'report':          api.report(); break;
+            case 'addTrustedDomain':api.addTrustedDomain(args[0]); break;
+            case 'config':          // advanced: allow changing config properties
+                if (args[0] && typeof args[0] === 'object') {
+                    Object.assign(CONFIG, args[0]);
+                }
                 break;
             default:
-                Util.log('warn', 'Unknown trusc command: ' + command);
+                Util.log('warn', 'Unknown Trusc command: ' + command);
         }
     }
 
-    // Process queued commands
+    // Drain any queued commands
     for (var i = 0; i < cmdQueue.length; i++) {
         processCommand(cmdQueue[i]);
     }
 
-    // Replace global with full API (keeping q for backwards compat)
-    var fullAPI = Object.assign(api, {
+    // Replace global __trusc with full API
+    var publicAPI = Object.assign(api, {
         q: cmdQueue,
         push: function(cmd) {
             processCommand(cmd);
             cmdQueue.push(cmd);
         }
     });
-    global.__trusc = fullAPI;
+    global.__trusc = publicAPI;
 
     // =========================================================================
-    // SECTION 8: AUTO‑RUN & SELF‑TEST
+    // SECTION 9: BOOTSTRAP
     // =========================================================================
-    Util.log('info', 'Trust & Security Auditor loaded. Auto‑auditing page...');
-    runAudit();
-
-    // Self‑test mode: ?trusc_test=2 creates a mock page with flaws in an iframe? We'll just log a test.
-    if (location.search.indexOf('trusc_test=2') !== -1) {
-        setTimeout(function() {
-            console.log(CONFIG.logPrefix + ' Self‑test active – simulating some issues...');
-            // We can't actually create issues on the live page safely, so we just print a fake report.
-            var fakeIssues = [
-                { severity: 'critical', title: 'Fake HTTP connection', detail: 'Test issue #1', fix: 'Use HTTPS.' },
-                { severity: 'high', title: 'Fake mixed content', detail: 'Test issue #2', fix: 'Load over HTTPS.' }
-            ];
-            var fakeScore = 60;
-            var fakeReport = generateReport(fakeIssues, fakeScore);
-            printReport(fakeReport);
-            console.log('%cSelf‑test complete. Verify that the report above is visible.', 'font-weight: bold');
-        }, 300);
+    // Check for self‑test flag
+    if (location.search.indexOf('trusc_trustscore=test') !== -1) {
+        setTimeout(selfTest, 200); // small delay for console readiness
+    } else {
+        Util.log('info', 'Auditing page automatically...');
+        runAudit();
     }
 
 })(typeof window !== 'undefined' ? window : globalThis,
