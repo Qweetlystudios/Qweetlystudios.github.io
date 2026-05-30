@@ -1,21 +1,18 @@
 /**
- * siteloader.js — Console‑Only + ?title=description Manual Logger
- * ---------------------------------------------------------------
- * @fileoverview All automatic runtime errors (onerror, unhandled
- *              rejections, console.error) are deduplicated and
- *              printed to the browser console.
- *              Additionally, any URL like
- *                ?Login button broken=Button does nothing
- *              triggers a highlighted manual bug report in the
- *              console – no GitHub, no token, no network.
+ * siteloader.js — Console‑Only Bug Catcher + Manual ?Bug=Fix Logger
+ * ------------------------------------------------------------------
+ * ✅ Automatically detects & logs all "wrongly coded code":
+ *      - Runtime errors (ReferenceError, TypeError, etc.)
+ *      - Unhandled Promise rejections
+ *      - Explicit console.error() calls
+ *      - (and deduplicates them so the console stays clean)
  *
- * @author   Qweetlystudios DevOps Taskforce (Bot Division)
- * @version  8.0.0 – pure console, ?title=description logging
+ * ✅ Manual bug reporting via URL:
+ *      ?Dark mode broken=Toggle does nothing
+ *      → Prints a highlighted report to the console
  *
- * @usage    Drop in <head>.
- *           Use ?Bug title=Fix description to log a report.
- *           Manual report from code:
- *             __siteloader.push(['report', { message: 'Bug' }]);
+ * @usage   Drop in <head>. Use ?title=description to log a manual report.
+ *          No token needed – everything stays inside the browser.
  */
 (function(global, document, navigator, console, Math, Date, setTimeout, clearTimeout, Array, Object, RegExp, JSON, Promise) {
     'use strict';
@@ -29,7 +26,7 @@
         enableConsoleGrouping: true,
         maxTitleLen: 120,
         titleTruncationSuffix: ' [...]',
-        dedupWindowMs: 60000,
+        dedupWindowMs: 60000,                       // suppress identical errors for 1 minute
         bufferFlushIntervalMs: 3000,
         maxConsoleReportsPerFlush: 3
     };
@@ -201,7 +198,7 @@
             if (global.__siteloaderManualIssueFired) return;
             global.__siteloaderManualIssueFired = true;
 
-            // Build a nice console report
+            // Highlighted manual bug report (detected “wrongly coded code” from URL)
             console.log('%c' + CONFIG.consoleLogPrefix + ' MANUAL REPORT (from URL)',
                         'font-size: 1.2em; background: #ff0; color: #000; padding: 4px 8px;');
             console.log('🔧 Bug: ' + Util.truncate(key, CONFIG.maxTitleLen));
@@ -209,15 +206,15 @@
             console.log('📄 Page: ' + global.location.href);
             console.log('🕒 Time: ' + Util.formatTimestamp(new Date()));
 
-            break; // only process the first meaningful parameter
+            break; // only the first meaningful parameter
         }
     }
 
     // =========================================================================
-    // ERROR HOOKS (CONSOLE‑ONLY)
+    // ERROR HOOKS (detects all JavaScript coding mistakes)
     // =========================================================================
     function installErrorHooks() {
-        // window.onerror
+        // 1. Runtime errors (e.g., undefined variables, type errors)
         var prevOnError = global.onerror;
         global.onerror = function(message, source, lineno, colno, error) {
             ConsoleBatchProcessor.enqueue({
@@ -234,7 +231,7 @@
             return false;
         };
 
-        // unhandledrejection
+        // 2. Unhandled Promise rejections (async coding mistakes)
         global.addEventListener('unhandledrejection', function(event) {
             var reason = event.reason;
             var message = (reason && reason.message) ? reason.message : String(reason);
@@ -252,7 +249,7 @@
             });
         });
 
-        // console.error monkey-patch
+        // 3. Explicit console.error() calls (often used to flag “wrong” code paths)
         var origConsoleError = console.error;
         console.error = function() {
             origConsoleError.apply(console, arguments);
@@ -301,12 +298,11 @@
         }
     }
 
-    // Process existing queue
     for (var i = 0; i < commandQueue.length; i++) {
         processCommand(commandQueue[i]);
     }
 
-    // Replace global __siteloader with push-enabled object
+    // Replace global __siteloader with push‑enabled object
     var api = {
         q: commandQueue,
         push: function(cmd) {
@@ -319,11 +315,11 @@
     // =========================================================================
     // BOOT
     // =========================================================================
-    installErrorHooks();
-    processUrlManualReport(); // Scan URL for ?title=description
+    installErrorHooks();                // start catching all coding mistakes
+    processUrlManualReport();           // check for ?Bug title=Fix description
 
     console.log(CONFIG.consoleLogPrefix + ' Console‑only telemetry active. ' +
-                'Use ?Bug title=Fix description to log a manual report.');
+                'Automatic error detection ON. Use ?Bug=Fix to log manual reports.');
 
     // Self‑test (optional)
     if (global.location && global.location.search.indexOf('siteloader_test') !== -1) {
